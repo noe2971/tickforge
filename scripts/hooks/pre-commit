@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Refuses commits that stage a file under results/ larger than 5 MB.
+# Run scripts/ignore-large-results.sh to add such files to results/.gitignore.
+set -euo pipefail
+
+limit_bytes=$((5 * 1024 * 1024))
+status=0
+
+while IFS= read -r -d '' path; do
+    [[ "$path" == results/* ]] || continue
+    size="$(git cat-file -s ":$path")"
+    if (( size > limit_bytes )); then
+        echo "pre-commit: $path is $size bytes (> 5 MB); results/ only takes small files." >&2
+        status=1
+    fi
+done < <(git diff --cached --name-only --diff-filter=AM -z)
+
+if (( status != 0 )); then
+    echo "Unstage it (git restore --staged <file>) and run scripts/ignore-large-results.sh." >&2
+fi
+exit "$status"

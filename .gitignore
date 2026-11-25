@@ -35,6 +35,13 @@ data/*
 !data/README.md
 !data/.gitkeep
 
-## Results (generated run output)
-results/*
-!results/.gitkeep
+## Results: tracked (benchmark tables, CSVs, charts), except large files.
+# Git cannot ignore by size, so two guards keep files over ~5 MB out:
+#   1. results/.gitignore lists them; regenerate it with
+#      scripts/ignore-large-results.sh after a run.
+#   2. the pre-commit hook (scripts/hooks/pre-commit) refuses to commit any
+#      staged file under results/ bigger than 5 MB.
+# Raw binary/compressed outputs are never wanted in git, whatever their size:
+results/**/*.bin
+results/**/*.gz
+results/**/*.itch
