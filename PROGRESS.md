@@ -69,6 +69,48 @@ Picked mechanically from the full-day message-count report, in this order:
   next to the numbers in `results/benchmarks.md`.
 - Only measured numbers are reported; nothing is estimated.
 
+## 2026-11-25 — ITCH 5.0 data layer: build log
+
+Done:
+- `results/` is tracked; files over 5 MB are kept out by
+  `scripts/ignore-large-results.sh` (writes `results/.gitignore`) and a
+  `pre-commit` hook. `data/` stays ignored.
+- Parser for all 23 ITCH 5.0 types (`include/tickforge/itch/`), streaming
+  gzip reader (`src/io/byte_source.cpp`), locate table, symbol filter,
+  compact `.tfc` format, `tools/itch_count`, `tools/itch_filter`,
+  `bench/itch_throughput`, and one-shot `tools/build_data_layer.sh`.
+- 52 C++ tests (pass in release and ASan+UBSan builds) and 12 Python tests for
+  `tools/select_less_liquid.py`. A deliberately planted offset bug in the Add
+  Order decoder made 3 tests fail, so the tests do detect field errors.
+- `tools/download_itch.sh` resume verified: after the download was stopped at
+  960,634,880 bytes, re-running it continued from that exact byte.
+
+Checks on a real partial download (validation only, not results):
+- The first 900,000,000 compressed bytes held 70,270,574 complete messages
+  (up to 10:21:22 ET): 0 unknown types, 0 length mismatches.
+- End-to-end dry run on the first 20,000,000 messages: the filter kept
+  221,585 messages (AAPL 128,626, MSFT 59,482, INTC 33,473, market-wide 4),
+  and re-reading the `.tfc` file with `itch_count` gave the same 221,585.
+- Stock locate 1335 (CFG-D) gets a second, identical Stock Directory message
+  at 05:16:01, so `R` count = distinct symbols + 1. The locate table
+  deduplicates it.
+
+Blocked:
+- The network on this machine dropped from ~5 MB/s to ~10 KiB/s during the
+  download (a CDN unrelated to Nasdaq was equally slow, so it is the local
+  link). The full-day count report, the Rule A stock choice, the filtered
+  file and `results/benchmarks.md` all need the complete file and have **not**
+  been produced. Once the download completes, run `tools/build_data_layer.sh`.
+
+Process note:
+- Commit `f4999e2` was made after a test run that reported 3 failures. They
+  came from a stale sanitizer binary still containing the planted bug (the
+  source had already been restored); a clean rebuild passed 52/52. The commit
+  command had checked ctest's text instead of its exit code. From now on every
+  commit goes through `scripts/check.sh`, which rebuilds and fails on ctest's
+  exit status (verified: it exits non-zero with the bug planted).
+- Commit `f6f49d9` (docs only) was made without running the tests first.
+
 ## Open questions
 
 - Target platform/toolchain versions to pin in CI (currently using whatever
