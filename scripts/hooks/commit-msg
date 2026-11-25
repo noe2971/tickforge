@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Strips AI-attribution lines from commit messages before they're recorded.
+set -euo pipefail
+
+msg_file="$1"
+
+grep -v -e '^Co-Authored-By:' -e 'Generated with' "$msg_file" > "${msg_file}.tmp" || true
+mv "${msg_file}.tmp" "$msg_file"

@@ -1,0 +1,40 @@
+## Build output
+build/
+build-*/
+out/
+cmake-build-*/
+
+## CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+_deps/
+
+## Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+dist/
+wheelhouse/
+*.so
+
+## uv
+.uv/
+
+## Editors / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+## Data (raw ITCH feeds etc. are large and not checked in)
+data/*
+!data/README.md
+!data/.gitkeep
+
+## Results (generated run output)
+results/*
+!results/.gitkeep

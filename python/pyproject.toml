@@ -1,0 +1,24 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.13"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "tickforge"
+version = "0.1.0"
+description = "Python bindings for the Tickforge limit order book / market-making simulator"
+requires-python = ">=3.10"
+readme = "../README.md"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+analysis = ["numpy", "pandas", "matplotlib"]
+dev = ["pytest"]
+
+[tool.scikit-build]
+cmake.source-dir = "."
+wheel.packages = ["tickforge"]
+
+[tool.scikit-build.cmake.define]
+TICKFORGE_BUILD_TESTS = "OFF"
+TICKFORGE_BUILD_BENCH = "OFF"
