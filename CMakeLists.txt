@@ -18,10 +18,22 @@ option(TICKFORGE_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(TICKFORGE_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(TICKFORGE_BUILD_TESTS "Build tests" ON)
 option(TICKFORGE_BUILD_BENCH "Build benchmarks" ON)
+option(TICKFORGE_BUILD_TOOLS "Build command-line tools (ITCH count/filter)" ON)
+
+find_package(ZLIB REQUIRED)
 
 add_library(tickforge_core
     src/placeholder.cpp
+    src/io/byte_source.cpp
+    src/itch/compact_file.cpp
+    src/itch/message_counter.cpp
 )
+
+# Position-independent so the static library can be linked into the Python
+# extension module.
+set_target_properties(tickforge_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_link_libraries(tickforge_core PUBLIC ZLIB::ZLIB)
 
 target_include_directories(tickforge_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -48,4 +60,8 @@ endif()
 
 if(TICKFORGE_BUILD_BENCH)
     add_subdirectory(bench)
+endif()
+
+if(TICKFORGE_BUILD_TOOLS)
+    add_subdirectory(tools)
 endif()

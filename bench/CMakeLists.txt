@@ -21,3 +21,8 @@ target_link_libraries(tickforge_bench PRIVATE
     tickforge_core
     benchmark::benchmark_main
 )
+
+# Full-day ITCH parse-throughput benchmark (standalone: one run over a
+# multi-GB file doesn't fit Google Benchmark's repeat-a-small-loop model).
+add_executable(itch_throughput itch_throughput.cpp)
+target_link_libraries(itch_throughput PRIVATE tickforge_core)
