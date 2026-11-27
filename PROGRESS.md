@@ -141,6 +141,128 @@ Benchmark (`results/benchmarks.md`, Rule B, commit `23e7829`):
 - Caveat: run on battery power (recorded in the table). Rule B did not
   specify a power source; future runs should use mains power to compare.
 
+## 2026-11-27 — Order book engine (Step 2): experiment rules (locked before any engine code ran on data)
+
+Written and committed before the engines exist, so no result can shape them.
+
+### Power source (applies to every benchmark from now on, including reruns)
+- Benchmarks run on mains power. Each run records, at its start and at its
+  end, the `pmset -g batt` power source and the macOS Low Power Mode flag
+  (`ProcessInfo.isLowPowerModeEnabled`). A run whose power source or Low
+  Power Mode changes between start and end is discarded and repeated.
+- The Step 1 parse benchmark (Rule B, unchanged otherwise) is rerun under
+  these conditions before any Step 2 benchmark. The earlier battery-power
+  run stays in `results/benchmarks.md`, labelled as such.
+- Checked while writing these rules: the laptop reported `Battery Power`
+  and Low Power Mode `on` (it is set for both battery and AC), and the
+  monotonic counter (`mach_absolute_time`) ticks every 41.667 ns (24 MHz).
+
+### Rule C — differential fuzz test (fast engine vs reference engine)
+- Generator: our own xoshiro256** PRNG and bounded-integer function, so a
+  seed gives the same stream with any compiler or standard library.
+- Every event is one call made identically on both engines: limit order
+  (can cross and fill), market order, full cancel, partial cancel,
+  replay-mode add (never matches), replay-mode execute, replay-mode replace.
+  Some calls are deliberately invalid (unknown id, dead id, duplicate live
+  id, zero shares, more shares than remain, price <= 0), so error paths are
+  compared too.
+- Prices: mostly within a small band around a random-walking mid (many
+  orders share a level, so FIFO order matters), sometimes far away (deep
+  book, inserts in the middle of the level array).
+- After every event compare: the returned status and values; the exact
+  sequence of fills (maker id, taker id, price, shares); the complete book —
+  every level on both sides best-first (price, total shares, order count)
+  and every order in each level in queue order (id, shares) — and the order
+  count. Any difference fails the run, which stops and prints seed + event.
+- Volume, release build: 1,000,000 short streams x 100 events (seeds
+  20261127 + i) plus 20 long streams x 500,000 events (books of hundreds of
+  orders). Sanitizer build (`debug-sanitize`, ASan + UBSan): 100,000 short
+  streams x 100 events plus 4 long streams x 250,000 events.
+- Pass: zero mismatches and zero sanitizer reports. If a bug is found and
+  fixed, the whole run is repeated from the first seed.
+- Sensitivity check, done before the real run: plant three bugs in the fast
+  engine one at a time — (a) LIFO instead of FIFO inside a level, (b) a
+  partial fill that forgets to reduce the level's total shares, (c) an
+  emptied level left in the level array. The fuzzer must catch each one. The
+  bug is then reverted and everything rebuilt.
+- A smaller version runs inside `ctest` so CI exercises it on every push.
+
+### Rule D — replay validation on the real day
+Input: `data/01302019.NASDAQ_ITCH50.gz`, all symbols, fast engine, one book
+per stock locate. Every check is counted; every exception is reported by
+category with examples, never dropped.
+1. Executions (`E`, `C`): the order exists in the book of the message's
+   locate; executed shares <= remaining shares. For `E` (no price field) the
+   order's price must be the best price on its side at that moment. For `C`
+   (explicit price) report execution price vs the order's price
+   (equal / better for the order / worse), split by the printable flag.
+   Also report (information, not pass/fail) how often the executed order was
+   at the front of its level's queue.
+2. `X`, `D`, `U` refer to a live order; `X` cancels <= remaining shares;
+   `A`/`F` and the new reference of `U` are not already live.
+3. Crossed book: after every book message during continuous trading — between
+   System Event `Q` (start of market hours) and `M` (end of market hours),
+   while the stock's latest Stock Trading Action state is `T` (trading) —
+   best bid < best ask for that stock. Crossed (bid > ask) and locked
+   (bid = ask) are counted separately, with how long each lasted and whether
+   a later message with the same timestamp resolved it. The same counts are
+   reported outside continuous trading for information.
+4. Reconciliation, with a ledger kept independently of the engine: for every
+   order, added shares - executed - cancelled must reach exactly zero by its
+   last execution, its delete or its replace, or else equal the shares the
+   engine still holds for it in the end-of-day book. Per symbol: total added
+   = executed + cancelled + removed by delete + removed by replace + shares in
+   the end-of-day book.
+5. Not applied to the book, but counted and explained: `P` trades (non-cross,
+   which on Nasdaq means non-displayed/hidden orders; reference number 0),
+   `Q` cross trades, `B` broken trades.
+6. Timestamps: count any message whose timestamp is earlier than the previous
+   one (the top-N export relies on time order).
+7. Real-day differential: replay the whole day through both engines in
+   lockstep; after every book message compare status, returned values and the
+   best bid/ask (price, shares, orders) of the affected stock; at every whole
+   hour and at the end compare the full books of all stocks. Zero mismatches
+   required.
+- Hypotheses written down before looking (to be confirmed or refuted):
+  `C` with printable `N` are executions inside opening/closing/halt crosses
+  at the cross price; crossed or locked books, if any, come from halts or
+  crosses; the end-of-day book may not be empty because Nasdaq may not send
+  deletes for orders still resting at 20:00.
+- Output: `results/replay_validation_01302019.md` plus a per-symbol peak-size
+  CSV (live orders, levels per side) that the benchmark uses to pre-size.
+
+### Rule E — Step 2 benchmarks (`results/benchmarks.md`)
+- Build: `release` preset (Apple clang, `-O3 -DNDEBUG`); machine details and
+  power (see above) recorded next to every table.
+- Replay throughput: full day, all symbols, both engines, same harness. Each
+  pass inflates 1 GiB of whole frames into memory, then times framing +
+  decoding + book updates over that buffer, and repeats to the end of the
+  file; inflate time is reported separately. Books are created and pre-sized
+  before the clock starts from the per-symbol peaks in the Rule D CSV (fast
+  engine: pools, order map, level arrays; reference engine: its order hash
+  map). 1 warm-up pass (discarded) + 3 measured passes per engine; median by
+  book time. Heap allocations during each measured pass are counted and
+  reported. Both engines' end-of-day books must hash identically or the run
+  is invalid.
+- Speedup = reference median book time / fast median book time.
+- Latency: same replay, but every book call is timed on its own with
+  `mach_absolute_time` (41.667 ns per tick here) into per-type histograms:
+  add (`A`+`F`), cancel (`X`), delete (`D`), execute (`E`+`C`), replace (`U`).
+  Report p50, p99, p99.9, max and mean per type. Values are whole ticks, so
+  each percentile is accurate to +/- one tick; the timer's own overhead
+  (back-to-back reads) is measured and reported, not subtracted. 1 warm-up +
+  3 measured passes per engine; the median of each statistic over the 3.
+- Only measured numbers are written; nothing is estimated.
+
+### Rule F — top-N price-level export
+- `top_levels(file, symbol, T, N = 10)` returns the book as it stood just
+  before time T: every message for that symbol with timestamp < T is
+  applied, none at or after T (same no-future-data rule as the simulator).
+- Tested on synthetic streams (including a message exactly at T, which must
+  be excluded) and on the real day: for AAPL, MSFT, INTC and COLB, every 30
+  minutes from 09:30 to 16:00, the fast and reference engines must return
+  identical levels.
+
 ## Open questions
 
 - Target platform/toolchain versions to pin in CI (currently using whatever
