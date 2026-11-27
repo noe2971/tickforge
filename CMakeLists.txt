@@ -27,6 +27,8 @@ add_library(tickforge_core
     src/io/byte_source.cpp
     src/itch/compact_file.cpp
     src/itch/message_counter.cpp
+    src/book/replay_validator.cpp
+    src/book/top_levels.cpp
 )
 
 # Position-independent so the static library can be linked into the Python

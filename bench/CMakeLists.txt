@@ -26,3 +26,9 @@ target_link_libraries(tickforge_bench PRIVATE
 # multi-GB file doesn't fit Google Benchmark's repeat-a-small-loop model).
 add_executable(itch_throughput itch_throughput.cpp)
 target_link_libraries(itch_throughput PRIVATE tickforge_core)
+
+# Full-day order book replay benchmarks: throughput, per-call latency and the
+# fast-vs-reference speedup (PROGRESS.md, Rule E).
+add_executable(book_replay book_replay.cpp)
+target_link_libraries(book_replay PRIVATE tickforge_core)
+target_compile_options(book_replay PRIVATE -Wall -Wextra -Wpedantic)

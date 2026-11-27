@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 #include "tickforge/io/byte_source.hpp"
@@ -28,6 +29,7 @@ struct StreamStats {
     std::uint64_t bad_length = 0;     // length prefix != spec length for that type
     std::uint64_t read_ns = 0;        // time spent inside ByteSource::read (decompression + I/O)
     std::uint64_t parse_ns = 0;       // time spent framing + in the callback
+    bool stopped = false;             // the callback asked to stop before the end
 };
 
 // Smallest buffer that always fits one maximum-size frame (2 + 65535 bytes).
@@ -35,7 +37,9 @@ inline constexpr std::size_t kMinFrameBuffer = 2 + 0xFFFF;
 
 // Calls fn(const uint8_t* msg, std::size_t len) for every framed message, in
 // file order. `msg` points at the message type byte; it is only valid during
-// the call. Throws std::runtime_error if the stream ends mid-message.
+// the call. If fn returns bool, returning false stops the pass early (the
+// result then has stopped = true). Throws std::runtime_error if the stream
+// ends mid-message.
 template <typename Fn>
 StreamStats for_each_frame(io::ByteSource& src, Fn&& fn, std::size_t buffer_size = 1 << 20) {
     using clock = std::chrono::steady_clock;
@@ -54,15 +58,24 @@ StreamStats for_each_frame(io::ByteSource& src, Fn&& fn, std::size_t buffer_size
         while (tail - head >= 2) {
             const std::size_t len = load_be16(buf.data() + head);
             if (tail - head < 2 + len) break;  // message continues in the next chunk
-            fn(static_cast<const std::uint8_t*>(buf.data() + head + 2), len);
+            const std::uint8_t* msg = buf.data() + head + 2;
             head += 2 + len;
             ++stats.messages;
+            if constexpr (std::is_same_v<std::invoke_result_t<Fn&, const std::uint8_t*, std::size_t>, bool>) {
+                if (!fn(msg, len)) {
+                    stats.stopped = true;
+                    break;
+                }
+            } else {
+                fn(msg, len);
+            }
         }
         const auto t2 = clock::now();
         stats.read_ns += static_cast<std::uint64_t>(std::chrono::nanoseconds(t1 - t0).count());
         stats.parse_ns += static_cast<std::uint64_t>(std::chrono::nanoseconds(t2 - t1).count());
         stats.bytes += head;
 
+        if (stats.stopped) break;
         if (got == 0) {
             if (head != tail) throw std::runtime_error("ITCH stream ends in the middle of a message");
             break;

@@ -263,6 +263,111 @@ category with examples, never dropped.
   minutes from 09:30 to 16:00, the fast and reference engines must return
   identical levels.
 
+## 2026-11-27 — Order book engine (Step 2): build log and results
+
+Built:
+- `include/tickforge/book/`: `types.hpp` (shared interface, concept
+  `OrderBook`), `object_pool.hpp`, `id_map.hpp`, `fast_book.hpp`,
+  `reference_book.hpp`, `itch_replay.hpp` (one book per stock locate),
+  `differential.hpp` (fuzz harness), `replay_validator.hpp`, `top_levels.hpp`.
+- Tools: `book_fuzz`, `itch_validate`, `itch_engine_diff`, `itch_top_levels`;
+  benchmark `bench/book_replay`; scripts `tools/run_book_benchmarks.sh`,
+  `tools/bench_env.sh`, `tools/assemble_benchmarks.sh`.
+- Design and reasons: `docs/order_book_design.md`.
+- Tests: behaviour tests run on both engines (typed tests), pool and hash-map
+  tests (the map against `std::unordered_map` on 600,000 random operations),
+  a small differential fuzz in `ctest`, replay-validator and top-N tests on
+  hand-built ITCH days, and `tickforge_alloc_tests`: global `operator new`
+  is replaced by a counter. 1,000,000 mixed operations on a reserved
+  FastBook made 0 heap allocations; ReferenceBook allocated on every add.
+
+Rule C, differential fuzz:
+- Sensitivity check first. Each planted bug was caught in the first stream
+  (seed 20261127): (a) LIFO inside a level at event 1, (b) partial fill not
+  reducing the level total at event 8, (c) emptied level left in the array at
+  event 13. Reverted, rebuilt from clean, 0 mismatches again.
+- Release: 1,000,020 streams, 110,000,000 events, 39,501,407 fills, **0
+  mismatches** (19 s on 15 threads; `results/book_fuzz_release.md`).
+- Sanitizer (`debug-sanitize`, ASan + UBSan, `halt_on_error=1`): 100,004
+  streams, 11,000,000 events, 3,947,921 fills, **0 mismatches, 0 sanitizer
+  reports** (79 s; `results/book_fuzz_debug_sanitize.md`).
+- All 119 ctest tests pass in release and in the sanitizer build (`scripts/check.sh`).
+- Observation: the generator often re-targets ids that have already died,
+  so about half of the id-based calls are deliberate "unknown order" cases
+  (e.g. 4,218,710 ok executes vs 6,261,501 unknown). Every path still ran
+  millions of times.
+
+Rule D, real-day validation (`results/replay_validation_01302019.md`):
+- 368,366,634 messages, 363,118,215 book messages: **0 exceptions of any
+  kind**. Every E/C hit a live order with enough shares; every E hit an
+  order at the best price on its side; no crossed or locked book during
+  continuous trading; all 8,695 stocks with book activity reconcile to the
+  share; timestamps never go backwards.
+- Hypotheses written before the run, now checked:
+  - "The end-of-day book may not be empty": **refuted**. Nasdaq deleted
+    every order; 0 orders and 0 shares remain at 20:05.
+  - "Crossed/locked books, if any, come from halts or crosses":
+    **confirmed**. 7 crossed and 6 locked episodes, all outside continuous
+    trading, all in stocks paused by LULD (state `P`, reason `LUDP`: DLPN,
+    PHUN, SXTC) or quotation-only after a halt (`Q`: EYEN). Orders
+    accumulate during a pause until the reopening cross.
+  - "C with printable N are cross executions at the cross price": **partly
+    confirmed**. 1,621 of the 6,582 non-printable C are within 1 s of that
+    stock's opening (442), closing (1,112) or halt (67) cross. 1,620 of
+    those trade at the order's price or better, as an auction should. The
+    other 4,961 are not near any cross; 4,960 of them traded at a *more
+    aggressive* price than the order's displayed price (mostly one cent).
+    Why these are non-printable is not established by these data.
+- Not in the hypotheses, explained or reported:
+  - All 152,304 printable C traded at a price more aggressive than the
+    order's displayed price: 152,056 by exactly one cent, 248 by less. This
+    is consistent with orders displayed one tick away from a price that
+    would lock the market (Reg NMS forbids displaying a locking quote) but
+    executable at their real limit. That is a hypothesis matching the
+    numbers, not proven from the feed.
+  - 7,056 of 8,096,995 E executions (0.087%) hit an order that was not first
+    in its price level's queue in our rebuilt book. All 7,056 executed orders
+    were plain A/F adds (none created by a replace), 7,032 were during market
+    hours, and they cluster at 09:xx (3,672) and 14:xx (2,122). (14:00 ET
+    that day was the FOMC statement; that is outside knowledge, not from the
+    data.) Cause not established. It matters for Step 3: strict FIFO by
+    arrival holds for 99.91% of executions, not all.
+  - `P` trades (hidden, non-displayed orders): 1,326,184 trades, 173,244,448
+    shares, all with order reference 0, so they cannot touch the book. `Q`
+    crosses: 8,713 opening, 8,713 closing, 4 halt/IPO. `B` broken: 116.
+- Book sizes: peak 1,742,866 live orders across the market; largest book
+  AAPL 42,774 orders; most levels on one side 3,143 (AMZN bids). AAPL, MSFT
+  and INTC had orders from $0.0001 to $199,999.99, which is why the design
+  rejects a price-indexed array (see the design doc).
+- Real-day lockstep diff (`results/engine_diff_01302019.md`): all
+  363,118,215 book messages gave identical results and best bid/ask in both
+  engines; 17 full-book comparisons (whole hours + end) covered 11,633,120
+  orders; **0 mismatches**.
+- Process note: the post-hoc breakdowns (report section 6) were added after
+  the first run, to explain what it found. They are descriptive and change
+  no rule; the report was regenerated with them, and the 0-exception result
+  was the same.
+
+Rule F, top-10 export (`results/top_levels_check_01302019.txt`): AAPL, MSFT,
+INTC, COLB at 14 times from 09:30 to 16:00: **56/56 identical** between the
+engines. The same export read from the full `.gz` matches the `.tfc` one
+(COLB, 12:00).
+
+Rule E amendment (made before any Step 2 benchmark ran): the validation run
+showed that every book is empty at the end of the day, so "end-of-day books
+hash identically" would be trivially true. The benchmark instead hashes every
+book at each 1 GiB chunk boundary and at the end (outside the timed segments),
+and both engines must agree on that combined hash.
+
+Process note: while planting the Rule C bugs, one run reused a stale binary.
+macOS ships GNU Make 3.81, which compares file times to the whole second, so
+a header edited in the same second as the previous build was not recompiled.
+Fixed by forcing recompiles for the planted-bug runs; `scripts/check.sh` and
+the benchmark script now always build with `--clean-first` (about 10 s).
+
+Benchmarks: not run yet. The laptop is still on battery power with Low Power
+Mode on (checked at 20:09 UTC); the scripts refuse to run off mains.
+
 ## Open questions
 
 - Target platform/toolchain versions to pin in CI (currently using whatever
