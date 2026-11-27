@@ -96,9 +96,11 @@ fi
 
 
 # Retry loop around curl's resume so a dropped connection is retried with
-# resume from the current .part size, not from zero.
+# resume from the current .part size, not from zero. It gives up only after
+# max_stalled attempts in a row that added no bytes; any progress resets it.
 attempt=0
-max_attempts=20
+stalled=0
+max_stalled=20
 while :; do
     attempt=$((attempt + 1))
     have=0
@@ -112,8 +114,15 @@ while :; do
             -C - --output "$part" "$BASE_URL/$FILE"; then
         break
     fi
-    if (( attempt >= max_attempts )); then
-        echo "error: download failed after $attempt attempts; re-run to resume." >&2
+    now=0
+    [[ -f "$part" ]] && now="$(wc -c < "$part" | tr -d ' ')"
+    if (( now > have )); then
+        stalled=0
+    else
+        stalled=$((stalled + 1))
+    fi
+    if (( stalled >= max_stalled )); then
+        echo "error: no progress in $stalled attempts in a row; re-run to resume." >&2
         exit 1
     fi
     sleep 5
