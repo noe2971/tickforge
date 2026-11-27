@@ -1,0 +1,24 @@
+type,name,size_bytes,count,percent
+S,System Event,12,6,0.0000
+R,Stock Directory,39,8714,0.0024
+H,Stock Trading Action,25,8805,0.0024
+Y,Reg SHO Restriction,20,8821,0.0024
+L,Market Participant Position,26,193769,0.0526
+V,MWCB Decline Level,35,1,0.0000
+W,MWCB Status,12,0,0.0000
+K,IPO Quoting Period Update,28,0,0.0000
+J,LULD Auction Collar,35,62,0.0000
+h,Operational Halt,21,0,0.0000
+A,Add Order,36,162970455,44.2414
+F,Add Order with MPID,40,1725898,0.4685
+E,Order Executed,31,8096995,2.1981
+C,Order Executed with Price,36,158886,0.0431
+X,Order Cancel,23,4669874,1.2677
+D,Order Delete,19,158273361,42.9663
+U,Order Replace,35,27222746,7.3901
+P,Trade (non-cross),44,1326184,0.3600
+Q,Cross Trade,40,17430,0.0047
+B,Broken Trade,19,116,0.0000
+I,NOII,50,3684511,1.0002
+N,Retail Price Improvement Indicator,20,0,0.0000
+O,DLCR Price Discovery,48,0,0.0000

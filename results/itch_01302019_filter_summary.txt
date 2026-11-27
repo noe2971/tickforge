@@ -1,0 +1,7 @@
+read 368366634 messages, kept 4538969 (138584819 payload bytes)
+  locate 0 (market-wide): 7
+  AAPL (locate 14): 1668775
+  MSFT (locate 5217): 1653563
+  INTC (locate 4118): 1165885
+  COLB (locate 1607): 50739
+wrote data/01302019_AAPL_MSFT_INTC_COLB.tfc (138584914 bytes)

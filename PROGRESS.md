@@ -95,12 +95,12 @@ Checks on a real partial download (validation only, not results):
   at 05:16:01, so `R` count = distinct symbols + 1. The locate table
   deduplicates it.
 
-Blocked:
-- The network on this machine dropped from ~5 MB/s to ~10 KiB/s during the
-  download (a CDN unrelated to Nasdaq was equally slow, so it is the local
-  link). The full-day count report, the Rule A stock choice, the filtered
-  file and `results/benchmarks.md` all need the complete file and have **not**
-  been produced. Once the download completes, run `tools/build_data_layer.sh`.
+Download (completed 2026-11-27, after the link recovered to ~8-10 MB/s):
+- `data/01302019.NASDAQ_ITCH50.gz`, 4,764,426,091 bytes = server
+  Content-Length; `gzip -t` passed. MD5 computed locally (Nasdaq's .md5sum is
+  unreachable, so not cross-checked): `54b7afd0be7f925f7e9d67a23898827b`.
+- The first resumed run gave up after 20 timed-out attempts; the retry loop
+  now only stops after 20 attempts in a row with no new bytes.
 
 Process note:
 - Commit `f4999e2` was made after a test run that reported 3 failures. They
@@ -110,6 +110,36 @@ Process note:
   commit goes through `scripts/check.sh`, which rebuilds and fails on ctest's
   exit status (verified: it exits non-zero with the bug planted).
 - Commit `f6f49d9` (docs only) was made without running the tests first.
+
+## 2026-11-27 — ITCH 5.0 data layer: full-day results
+
+Full day (`results/itch_01302019_counts.md`, `_by_type.csv`, `_by_symbol.csv`):
+- 368,366,634 messages, 11,245,883,092 uncompressed bytes, 8,713 symbols,
+  03:03:59.688 to 20:05:00.000 ET. 0 unknown types, 0 wrong lengths.
+- Add (44.2%) and Delete (43.0%) are 87% of all messages; executions
+  (E + C) are 2.2%. Most orders are cancelled, not filled.
+- Check: per-symbol totals sum to 368,366,627; the remaining 7 are the
+  locate-0 messages (6 System Event + 1 MWCB Decline Level).
+
+Rule A result (`results/itch_01302019_less_liquid_selection.txt`):
+- 1,623 stocks passed filters 1-3. Closest to 2,000 executions: **COLB**
+  (Columbia Banking System, Nasdaq Global Select `Q`, common stock), 2,001
+  executions, 21,618 adds, 50,739 messages, closing cross $36.49. That is
+  about 1/45 of AAPL's 89,735 executions.
+
+Filtered file (`results/itch_01302019_filter_summary.txt`):
+- `data/01302019_AAPL_MSFT_INTC_COLB.tfc`, 138,584,914 bytes, 4,538,969
+  messages: AAPL 1,668,775, MSFT 1,653,563, INTC 1,165,885, COLB 50,739,
+  market-wide 7. Each count equals that symbol's full-day report total, and
+  re-reading the `.tfc` with `itch_count` reproduces all four exactly.
+
+Benchmark (`results/benchmarks.md`, Rule B, commit `23e7829`):
+- Median of 3 full-day passes: 18.78 s, 19.62 M msg/s, 598.9 MB/s
+  uncompressed, 253.7 MB/s compressed. Of that, 15.86 s was zlib inflate +
+  file reads and 2.91 s was framing + decoding (126.4 M msg/s on its own).
+  The bottleneck is decompression, not the parser.
+- Caveat: run on battery power (recorded in the table). Rule B did not
+  specify a power source; future runs should use mains power to compare.
 
 ## Open questions
 
