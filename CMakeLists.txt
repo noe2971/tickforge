@@ -30,6 +30,8 @@ add_library(tickforge_core
     src/book/replay_validator.cpp
     src/book/top_levels.cpp
     src/book/queue_jumps.cpp
+    src/sim/simulator.cpp
+    src/sim/strategies.cpp
 )
 
 # Position-independent so the static library can be linked into the Python

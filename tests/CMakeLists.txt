@@ -27,9 +27,13 @@ add_executable(tickforge_tests
     test_replay_validator.cpp
     test_top_levels.cpp
     test_queue_jumps.cpp
+    test_sim.cpp
+    test_sim_properties.cpp
 )
 
 target_compile_options(tickforge_tests PRIVATE -Wall -Wextra -Wpedantic)
+# Lets tests find data/ (tests that need it skip when the file is missing).
+target_compile_definitions(tickforge_tests PRIVATE TICKFORGE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 target_link_libraries(tickforge_tests PRIVATE
     tickforge_core
