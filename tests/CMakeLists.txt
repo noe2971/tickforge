@@ -26,6 +26,7 @@ add_executable(tickforge_tests
     test_book_fuzz.cpp
     test_replay_validator.cpp
     test_top_levels.cpp
+    test_queue_jumps.cpp
 )
 
 target_compile_options(tickforge_tests PRIVATE -Wall -Wextra -Wpedantic)

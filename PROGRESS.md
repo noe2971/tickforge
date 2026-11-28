@@ -428,6 +428,174 @@ validation peaks.
   Cache misses on the id map, order and level are the obvious guess, but it
   is only a guess until measured.
 
+## 2026-11-28 — Simulator (Step 3): queue-jump investigation and experiment rules (locked before the simulator ran on any data)
+
+### Investigation: the 7,056 `E` that hit an order not first in its queue
+
+Done first, as asked, before any queue model existed. Tool
+`tools/itch_queue_jumps` (`include/tickforge/book/queue_jumps.hpp`, tests in
+`tests/test_queue_jumps.cpp`); full-day report `results/queue_jumps_01302019.md`.
+It is analysis code that looks ahead in the feed and is not used by the
+simulator. It found the same 8,096,995 `E` and 7,056 jumps as Step 2.
+
+- **Every one of the 8,096,995 `E` executions hit the order with the smallest
+  order reference number at its price level: 0 exceptions**, the 7,056 jumps
+  included.
+- Every jumping order was a *late add*: a reference number smaller than one the
+  same stock had already published (measured per stock; across stocks the
+  numbers are not in time order). The day has 813,636 late adds: 813,633
+  between 09:30:00.000565 and 10:00, 167,367 of them within 1 s of the
+  market-open event (09:30:00.000036), and 3 at 16:00:00. 531,230 appeared
+  more than an hour after their stock had published a larger reference; 8
+  within 1 ms. None of the 59,379 skipped orders was a late add.
+- 3,420 jumps: every skipped order also executed at the same nanosecond
+  timestamp. 3,636 jumps: a skipped order kept resting (25,747 orders), and
+  later 24,456 of those executed by `E`, 1,290 were deleted, 1 partly
+  cancelled, none was left at the end. 0 jumps shared a timestamp with a `Q`
+  cross. The 14:00 cluster is 09:30 late adds still resting when the price
+  reached them.
+- Reading (fits every number above; the feed does not state it): orders
+  entered before the open that only become active at 09:30 are published
+  then, but keep the time priority of their entry. Nasdaq ranks a price level
+  by entry time, and the order reference number records entry order. Step 2's
+  book ranked by publication time, which differs only for these orders.
+- **Decision: queue priority inside a price level is reference-number order.**
+  No class of execution needs special treatment. Any execution that still
+  contradicts the queue model in the simulator is counted (Rule H, anomalies)
+  and gives no fill.
+
+### Rule G — shadow orders and their place in the queue
+- One stock per run, from the replayed file (`.tfc` for development; `.gz`
+  only where a test needs the full day). The real book is rebuilt from the
+  feed exactly as in Step 2. Shadow orders never change it.
+- Every real order's priority key is its reference number. A shadow order gets
+  key K = the largest reference number that stock has published when the order
+  arrives at the exchange. It is behind every real order with reference ≤ K
+  and ahead of every one with reference > K. A late add (reference ≤ K
+  published after the shadow arrived) therefore goes *ahead* of it.
+  Shadow orders at one price rank among themselves by arrival.
+- `ahead` = shares of real orders at the shadow's side and price with
+  reference ≤ K. At arrival it is the level's whole size. It falls when such
+  an order is executed, cancelled, deleted or replaced (a replaced order comes
+  back with a new, larger reference, so behind), and rises when a late add
+  joins.
+- Partial cancel of a shadow order keeps its key. Replace = cancel + new order
+  with a new key (it loses priority, like ITCH `U`). The new order's size is
+  the size given, and a replace arriving after the order fully filled is
+  rejected (too late).
+- Rejections at arrival: shares 0 or price ≤ 0; post-only that would cross the
+  real book; any order that would cross the strategy's own resting shadow
+  order on the other side (self-cross). Shadow orders never trade with each
+  other.
+
+### Rule H — fills
+Shadow orders fill only while the stock's latest Stock Trading Action state is
+`T`, or no `H` message has been seen. Fills are at the shadow's own price
+(it is the resting order), except taking, which fills at the real price.
+- Taking at arrival (both models): a shadow order whose limit crosses the real
+  opposite best takes displayed liquidity best price first, at each real
+  order's price, up to that order's shares minus what shadow orders already
+  took from it. Taken shares stay used until the real order's remaining size
+  falls below them. Taker fee. An IOC remainder is cancelled; otherwise it
+  rests. A shadow order takes liquidity only at its arrival.
+- **Queue-aware** resting fills, best-priced shadow first, then by key:
+  1. Real execution (`E`, or `C` at its execution price e) of x shares of
+     real order R on the shadow's side. A shadow buy at P fills if P ≥ e
+     (sell: P ≤ e), ahead = 0, and R is not ahead of it. The shadows together
+     take at most x shares. If R is ahead of it, ahead falls instead. An
+     execution behind a shadow, or at a worse price, while ahead > 0 is
+     counted as an anomaly and gives no fill.
+  2. A real add or replace on the other side at a price crossing a resting
+     shadow (ahead = 0) fills it, up to that order's shares: in reality the
+     newcomer would have traded with it. If ahead > 0, anomaly and no fill.
+  3. Hidden-order trades (`P`) and crosses (`Q`) never fill queue-aware
+     shadows: the feed doesn't say whether they could have reached a
+     displayed order.
+- **Naive "filled on touch"**: the whole remaining size fills at the shadow's
+  price at the first real print at or through its price (`E`, `C`, `P` or
+  `Q`; either side) or the first real order on the other side priced to cross
+  it. Every queue-aware trigger is also a naive trigger, so for orders that
+  do not depend on fills, naive fills at least as much and no later.
+- Assumption (both models): no market impact. A real order behind a shadow
+  still trades as in the feed after the shadow filled.
+
+### Rule I — latency, event order and no look-ahead
+- Two configurable delays: order entry (strategy to exchange) for place,
+  cancel and replace; market data (exchange to strategy) for every real
+  message, fill and order acknowledgement.
+- A decision made at strategy time τ takes effect at the exchange at
+  τ + order latency, after every real message timestamped at or before that
+  time. Real messages win ties, so a shadow joins behind anything that
+  arrived in the meantime.
+- Event order at equal times: real message, shadow action at the exchange,
+  measurement (markout, P&L sample), delivery to the strategy, strategy timer.
+- The strategy sees only its own copy of the book, updated from delivered
+  messages, its own delivered fills and acknowledgements, and its clock. It
+  never sees the exchange-side book, queue positions or any message
+  timestamped after τ − market-data latency. The simulator processes messages
+  one at a time and never reads ahead for the strategy.
+- At the run's end time the simulator cancels every shadow order (no
+  latency), calls the strategy's end hook, and fixes the final P&L. After
+  that, messages are read only to finish markouts.
+
+### Rule J — accounting
+- Cash and fees in integer micro-dollars; prices stay in ITCH's $0.0001 units.
+- Fees per share, configurable: maker rebate (default $0.0020) and taker fee
+  (default $0.0030). These are illustrative defaults in the shape of Nasdaq's
+  schedule, not a quote of a 2019 tier.
+- Mark-to-market P&L = cash + inventory × real midpoint. Sampled every second
+  from start to end, at every fill, and at the end.
+- Markouts at 100 ms, 1 s and 10 s per fill: side sign × (real mid after all
+  messages timestamped ≤ fill time + horizon − real mid just before the
+  fill's trigger), in dollars per share (side sign +1 for buys). Negative
+  means the price moved against the fill (adverse selection). Also reported:
+  side sign × (that later mid − fill price). A markout with a one-sided book
+  at either end, or a horizon past the last message, is counted as
+  unavailable.
+
+### Rule K — tests (all on hand-built streams unless named)
+- Queue: an order behind 500 shares fills only after 500 shares trade.
+  Cancels and deletes ahead move it up. A late add goes ahead. Partial fills.
+  A replace loses priority; a partial cancel keeps it.
+- Latency: a shadow order arriving 5 µs after a real order at its price is
+  behind it, and the same order with zero latency is ahead of it. Cancels
+  arriving after a fill are rejected as too late.
+- Taking, depletion, IOC, post-only, self-cross, fees and rebates, no fills
+  while halted, markouts and MTM checked to the micro-dollar.
+- Look-ahead: alter, drop and add messages after a time T (hand-built and on
+  the COLB part of the `.tfc`). Every strategy decision made at or before
+  T + market-data latency must be identical. Every callback asserts that the
+  strategy has seen no message timestamped after τ − market-data latency.
+- Naive ≥ queue-aware: for a fixed schedule of orders (random hand-built
+  streams, and COLB/MSFT in the `.tfc`), every order's naive filled shares are
+  ≥ its queue-aware filled shares, and its naive first fill is no later.
+- Python: a strategy written in Python runs through pybind11. A Python copy of
+  the C++ demo strategy gives identical fills on COLB.
+- Tests that need files in `data/` skip with a message when the file is
+  missing.
+
+### Rule L — demonstration run (`results/sim_demo_01302019.md`)
+- Data: `data/01302019_AAPL_MSFT_INTC_COLB.tfc`; stocks COLB (picked in Step 1
+  for queue work) and MSFT (long queues).
+- Strategy `JoinBestQuoter`, fixed before running: from 09:35:00 to 15:55:00
+  ET, keep one 100-share post-only buy at the best bid and one 100-share
+  post-only sell at the best ask, as the strategy sees them. When that side's
+  best price changes, replace the order at the new best. No buying at
+  inventory ≥ +500, no selling at ≤ −500. No flattening: P&L is marked at the
+  midpoint at 15:55:00.
+- Grid: fill model {queue-aware, naive} × order latency {1 µs, 100 µs, 1 ms};
+  market-data latency 0; default fees.
+- Reported per run, measured only: orders placed / rejected, fills, filled
+  shares, filled shares / placed shares, inventory range, cash, fees and
+  rebates, P&L at 15:55, markouts (share-weighted mean and count available)
+  at each horizon.
+- Hypotheses written before running: (1) naive fills more shares than
+  queue-aware in every cell; (2) queue-aware filled shares fall as latency
+  rises; (3) queue-aware fills have worse (more negative) 1 s and 10 s
+  midpoint markouts than naive fills.
+- No timing measurement is part of Step 3. If one is added, the mains-power
+  rule applies.
+
 ## Open questions
 
 - Target platform/toolchain versions to pin in CI (currently using whatever

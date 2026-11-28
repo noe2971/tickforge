@@ -317,3 +317,25 @@ TYPED_TEST(BookTest, ManyOrdersAtManyLevelsStayConsistent) {
     EXPECT_EQ(b.best(B)->price, 300);
     EXPECT_EQ(b.best(S), (LevelView{400, 1'000'000 - r.filled, 1}));
 }
+
+// FastBook-only helper used by the queue-jump analysis and the simulator.
+TEST(FastBookLevelWalk, ForEachOrderAtVisitsOneLevelInQueueOrder) {
+    FastBook b;
+    ASSERT_EQ(b.add(1, Side::buy, 1000, 10), Status::ok);
+    ASSERT_EQ(b.add(2, Side::buy, 1001, 20), Status::ok);
+    ASSERT_EQ(b.add(3, Side::buy, 1000, 30), Status::ok);
+    ASSERT_EQ(b.add(4, Side::sell, 1000, 40), Status::ok);  // same price, other side
+    ASSERT_EQ(b.add(5, Side::buy, 1000, 50), Status::ok);
+    ASSERT_EQ(b.cancel(3, 5), Status::ok);                   // keeps its place
+    std::vector<std::pair<OrderId, Qty>> seen;
+    b.for_each_order_at(Side::buy, 1000, [&](OrderId id, Qty q) { seen.emplace_back(id, q); });
+    const std::vector<std::pair<OrderId, Qty>> want{{1, 10}, {3, 25}, {5, 50}};
+    EXPECT_EQ(seen, want);
+    seen.clear();
+    b.for_each_order_at(Side::sell, 1000, [&](OrderId id, Qty q) { seen.emplace_back(id, q); });
+    EXPECT_EQ(seen, (std::vector<std::pair<OrderId, Qty>>{{4, 40}}));
+    seen.clear();
+    b.for_each_order_at(Side::buy, 999, [&](OrderId id, Qty q) { seen.emplace_back(id, q); });  // no such level
+    b.for_each_order_at(Side::sell, 2000, [&](OrderId id, Qty q) { seen.emplace_back(id, q); });
+    EXPECT_TRUE(seen.empty());
+}

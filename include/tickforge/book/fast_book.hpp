@@ -171,6 +171,19 @@ public:
             for (const Order* o = it->level->head; o != nullptr; o = o->next) f(it->level->price, o->id, o->qty);
     }
 
+    // f(OrderId, Qty) for every order at one price on one side, front of the
+    // queue first; does nothing if that level does not exist. Used by
+    // analysis code and the simulator; not on the replay hot path.
+    template <typename F>
+    void for_each_order_at(Side side, Price price, F&& f) const {
+        const LevelArray& levels = sides_[index(side)];
+        const std::int64_t key = key_of(side, price);
+        const auto it = std::lower_bound(levels.begin(), levels.end(), key,
+                                         [](const Slot& s, std::int64_t k) { return s.key < k; });
+        if (it == levels.end() || it->key != key) return;
+        for (const Order* o = it->level->head; o != nullptr; o = o->next) f(o->id, o->qty);
+    }
+
     // How many times this book asked the system allocator for memory.
     struct MemoryStats {
         std::size_t order_blocks = 0;

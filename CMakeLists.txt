@@ -29,6 +29,7 @@ add_library(tickforge_core
     src/itch/message_counter.cpp
     src/book/replay_validator.cpp
     src/book/top_levels.cpp
+    src/book/queue_jumps.cpp
 )
 
 # Position-independent so the static library can be linked into the Python
