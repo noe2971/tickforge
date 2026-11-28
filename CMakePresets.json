@@ -50,7 +50,8 @@
       "configurePreset": "debug-sanitize",
       "output": { "outputOnFailure": true },
       "environment": {
-        "UBSAN_OPTIONS": "print_stacktrace=1"
+        "UBSAN_OPTIONS": "print_stacktrace=1",
+        "ASAN_OPTIONS": "alloc_dealloc_mismatch=1"
       }
     }
   ]

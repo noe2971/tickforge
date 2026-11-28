@@ -8,6 +8,7 @@
 #include <map>
 
 #include "sim_test_util.hpp"
+#include "test_settings.hpp"
 #include "tickforge/itch/compact_file.hpp"
 #include "tickforge/itch/stream.hpp"
 
@@ -90,7 +91,8 @@ std::pair<std::uint64_t, std::uint64_t> compare_models(const SimResult& naive, c
 
 TEST(SimLookAhead, DecisionsUpToTDoNotChangeWhenLaterMessagesChange) {
     int later_differs = 0, runs = 0;
-    for (std::uint64_t seed = 1; seed <= 12; ++seed) {
+    const std::uint64_t seeds = tickforge::test::full_or_short(12, 4, "look-ahead random streams");
+    for (std::uint64_t seed = 1; seed <= seeds; ++seed) {
         StreamGen g(seed);
         std::vector<Bytes> base = prologue();
         g.generate(base, 3000);
@@ -143,7 +145,8 @@ TEST(SimLookAhead, EveryMarketEventIsDeliveredExactlyAtItsTimestampPlusLatency) 
 
 TEST(SimModels, NaiveFillsAtLeastAsMuchAndNoLaterOnRandomStreams) {
     std::uint64_t naive_total = 0, queue_total = 0;
-    for (std::uint64_t seed = 1; seed <= 150; ++seed) {
+    const std::uint64_t seeds = tickforge::test::full_or_short(150, 20, "naive-vs-queue random streams");
+    for (std::uint64_t seed = 1; seed <= seeds; ++seed) {
         StreamGen g(seed + 500);
         std::vector<Bytes> msgs = prologue();
         g.generate(msgs, 3000);

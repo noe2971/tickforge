@@ -679,6 +679,49 @@ Hypotheses (written before the run):
   all 6 cells. Every P&L above includes the illustrative maker rebate; with
   no rebate, every cell would be lower by its rebates column in the report.
 
+## 2026-11-28 — CI: red since `5de6032`, cause and fix
+
+- Every CI run from `5de6032` onwards (runs #9 to #12, and the three Step 3
+  pushes) failed in exactly one of the six jobs: `cpp (ubuntu-latest,
+  debug-sanitize)`. The macOS jobs, the Ubuntu debug job and both Python jobs
+  passed every time.
+- Cause (from `gh run view --log-failed`): the three `HotPathAllocations`
+  tests aborted with AddressSanitizer `alloc-dealloc-mismatch (operator new vs
+  free)`. `tests/test_book_alloc.cpp` replaced only the plain and array forms
+  of `operator new` (with `malloc`) and `operator delete` (with `free`). GCC
+  15's `std::stable_sort`, which GoogleTest runs before the tests, takes a
+  temporary buffer from the *nothrow* `operator new`. Under ASan on Linux that
+  form was still ASan's own, and our `free()`-based `operator delete` released
+  it. ASan checks for this mismatch by default on Linux, not on macOS, which
+  is why the local gate missed it.
+- The three causes suspected for the failure were checked and were not it.
+  (1) Before Step 3 no test read `data/`. The two new `.tfc` tests already
+  skipped in CI on both OSes. (2) The Step 2 fuzz tests take 2 to 3 s in
+  CI; the long `book_fuzz` run is not part of `ctest`. (3) GCC 15.2.0 built
+  all our code with no warning or error under `-Wall -Wextra -Wpedantic`.
+- Fixes:
+  - `test_book_alloc.cpp` now replaces every form: plain, array, nothrow,
+    aligned and sized. Each allocates through one counted path and frees
+    with `free()`. A new regression test calls all 12 allocation forms
+    directly and requires each to be counted and correctly aligned; another
+    runs the `std::stable_sort` path. Against the old code the first test
+    failed on macOS for 8 forms (nothrow and aligned), then ASan stopped
+    with the CI error, so the old "0 allocations" check could not see those
+    forms at all. With the fix the reserved FastBook still makes 0 heap
+    allocations in 1,000,000 operations, now with every form counted.
+  - The `debug-sanitize` test preset sets `ASAN_OPTIONS=alloc_dealloc_mismatch=1`,
+    so macOS and `scripts/check.sh` run the same check as Linux. All 151
+    tests pass with it.
+  - Long randomized tests: CI sets `TICKFORGE_SHORT_TESTS=1` and runs 20 of
+    the 150 naive-vs-queue streams and 4 of the 12 look-ahead streams, with
+    the same checks. The setting is printed in the output.
+    `scripts/check.sh` unsets the variable, so every commit is still gated on
+    the full run. Before this, the naive-vs-queue test took 35 s (Ubuntu) and
+    50 s (macOS) under the sanitizer in CI.
+  - CI now prints every skipped test with its reason, and pytest runs with
+    `-rs`, so tests that need `data/` report "needs data/…" instead of only
+    "Skipped".
+
 ## Open questions
 
 - Target platform/toolchain versions to pin in CI (currently using whatever

@@ -13,6 +13,9 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 jobs="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
+# The local gate always runs the long randomized tests in full (CI sets
+# TICKFORGE_SHORT_TESTS=1 for a smaller fixed set; see tests/test_settings.hpp).
+unset TICKFORGE_SHORT_TESTS
 
 for preset in release debug-sanitize; do
     echo "== $preset: configure + build"

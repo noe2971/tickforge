@@ -23,7 +23,18 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }} --parallel
 
       - name: Test
+        # Long randomized tests run a smaller fixed set of seeds here (same
+        # checks); scripts/check.sh runs them in full before every commit.
+        env:
+          TICKFORGE_SHORT_TESTS: "1"
         run: ctest --preset ${{ matrix.preset }}
+
+      - name: Show skipped tests (with reasons) and test settings
+        if: always()
+        run: |
+          log="build/${{ matrix.preset }}/Testing/Temporary/LastTest.log"
+          grep -h -A1 ": Skipped$" "$log" || echo "No skipped tests."
+          grep -h "\[test setting\]" "$log" || true
 
   python:
     strategy:
@@ -45,4 +56,5 @@ jobs:
 
       - name: Run tests
         working-directory: python
-        run: uv run pytest
+        # -rs prints the reason for every skipped test (those needing data/).
+        run: uv run pytest -rs
