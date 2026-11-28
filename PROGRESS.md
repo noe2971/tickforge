@@ -722,6 +722,172 @@ Hypotheses (written before the run):
     `-rs`, so tests that need `data/` report "needs data/…" instead of only
     "Skipped".
 
+## 2026-11-28 — Market-making study (Step 4): design (locked before any Step 4 run)
+
+Written and committed before the strategies exist and before any Step 4
+configuration has been run, so no Step 4 result can shape it. One earlier set
+of results has been seen: the Step 3 demonstration (Rule L, `JoinBestQuoter`
+on COLB and MSFT). It is logged as trial 1 in `research/trials.jsonl`, and
+nothing below was changed because of it. Where a choice below equals a Rule L
+choice (order size, inventory limit, session, fees), it is because Rule L
+fixed that value before its own run, not because of what the run showed.
+
+### Rule M — what is run (trial 2: one pre-registered grid, 80 configurations)
+- Data: `data/01302019_AAPL_MSFT_INTC_COLB.tfc` (30 Jan 2019). Symbols: the 4
+  from Step 1, **AAPL, MSFT, INTC, COLB**.
+- Grid: strategy {symmetric, Avellaneda-Stoikov} × symbol {4} × fill model
+  {naive "filled on touch", queue-aware} × latency {0, 10 µs, 100 µs, 1 ms,
+  10 ms} = 80 runs. Every one is run once and every one is reported.
+- Latency L is the one-way delay between the strategy and the exchange, applied
+  in **both directions**: order entry = L and market data = L, so the time
+  from an exchange event to our reaction arriving at the exchange is 2L. Both
+  directions are used because physical distance delays both (trial 1 varied
+  order latency only).
+- Session: the simulator starts at 09:30:00.000 ET and ends at 15:55:00.000.
+  Orders are sent only from **09:35:00 to 15:55:00** (continuous trading, away
+  from the 09:30 opening and 16:00 closing crosses). From 09:30 to 09:35 the
+  strategies only observe (the Avellaneda-Stoikov estimators below need a
+  history). At 15:55 every order is cancelled and P&L is marked at the real
+  midpoint, with no flattening trade; the end inventory is reported.
+- Queue priority: reference-number order (Rule G, unchanged).
+- Fees (Rule J's mechanism), one setting for every run: **taker fee $0.0030
+  per share, maker rebate $0.0020 per share**. Why: $0.0030 is the Reg NMS
+  Rule 610 cap on access fees for stocks at or above $1, which Nasdaq charged
+  for removing liquidity. Nasdaq's 2019 rebates for adding displayed liquidity
+  were tiered by a member's volume, up to $0.00305. $0.0020 is a middle value.
+  A new participant would likely get less; the exact 2019 base tier was not
+  verified (a web search on 2026-11-28 did not find the archived price list).
+  Both strategies only post (post-only), so in practice only the rebate
+  applies. Every run also reports P&L **before fees**, so any other rebate can
+  be applied by hand: P&L(rebate ρ) = gross P&L + ρ × filled shares.
+- Tick: $0.01 (all four stocks trade above $1; Reg NMS Rule 612).
+- No look-ahead: both strategies see only what the simulator delivers (Rule I).
+  Every estimator below uses only data the strategy has already received.
+- Simulator change needed for the markout curves (made with tests before the
+  run): markout horizons become a list of up to 8 values (default unchanged:
+  100 ms, 1 s, 10 s). This study uses **0, 1 ms, 10 ms, 100 ms, 1 s, 10 s,
+  60 s**. Horizon 0 = the midpoint after every real message stamped at or
+  before the fill time.
+
+### Rule N — strategy 1: symmetric quoter, one tick inside the spread
+Parameters and why:
+- **Order size Q = 100 shares**: one round lot, the smallest order that counts
+  toward the displayed quote (odd lots did not, in 2019).
+- **Inventory limit L_inv = 500 shares** (5 round lots): small next to these
+  stocks' displayed depth, so the no-market-impact assumption (Rule H) stays
+  plausible, and the same as Rule L so trial 1 is comparable.
+- Prices, from the strategy's own view of the best bid b and best ask a: bid
+  = b + 1 tick if b + 1 tick < a − 1 tick, else b; ask = a − 1 tick under the
+  same condition, else a. So with a spread of 3 ticks or more both sides
+  improve by one tick; with 1 or 2 ticks both join the best (improving both
+  sides of a 2-tick spread would put both orders on the same price, a
+  self-cross). It is symmetric: inventory never moves the prices.
+- Sizes: buy size = min(Q, L_inv − position), sell size = min(Q, L_inv +
+  position), using the position as reported to the strategy. A side whose
+  size would be ≤ 0 is not quoted. With latency, fills not yet reported can
+  still take the measured inventory past ±500; that is reported, not hidden.
+- Mechanics (same as `JoinBestQuoter`): post-only orders, one per side; when a
+  side's target price changes, replace (losing queue priority). After a
+  rejection, wait for the next market event before quoting that side again.
+  No quotes, and resting quotes cancelled, when the book is one-sided or the
+  trading state is not `T`.
+
+### Rule O — strategy 2: Avellaneda-Stoikov (2008) market maker
+Formulas (money in $, inventory q in shares, time in seconds):
+- reservation price r = s − q · γ · σ² · (T − t)
+- total spread δ = γ · σ² · (T − t) + (2/γ) · ln(1 + γ/k)
+- bid = r − δ/2, ask = r + δ/2
+
+Inputs and parameters, fixed now:
+- s = the strategy's own midpoint; t = its clock; **T = 15:55:00** (the
+  session end, as in the paper's finite horizon). The inventory skew
+  therefore shrinks during the day and is 0 at 15:55; that is the textbook
+  model's behaviour and is kept.
+- **σ² (per second), estimated causally**: every second from 09:30:01 the
+  strategy samples its own midpoint; σ² = mean of the squared changes between
+  consecutive samples over the last 1,800 changes (30 minutes; fewer early in
+  the day). A sample with a one-sided book is skipped and the change across
+  it is not used. Why 30 minutes: long enough to be stable for a slow stock,
+  short enough to follow the day's changing volatility.
+- **k, estimated causally**: in the model, fill intensity at distance δ from
+  the mid falls as A·e^(−kδ). If execution distances from the mid are
+  exponential, the maximum-likelihood estimate is 1/k = their mean. So 1/k =
+  the mean of |execution price − the strategy's midpoint just before it| over
+  every displayed execution it has seen since 09:30:00 (`E`, and `C` with
+  printable `Y`; crosses, `C` printable `N` and hidden `P` trades are left
+  out). The code uses m = 1/k directly: ln(1 + γ/k) = ln(1 + γ·m).
+- **γ = 4.56 × 10⁻⁵ per $** (risk aversion), fixed for every stock and chosen
+  without these data: for a "typical" large-cap stock (price $100, daily
+  volatility 1.5%, so σ² = 1.5²/23,400 $²/s), holding one round lot (100
+  shares) at 09:35 moves the reservation price by one tick:
+  γ = 0.01 / (100 × 1.5²/23,400 × 22,800). The full limit (500) then moves it
+  5 ticks at 09:35. Intent: the skew should start to matter at one lot and
+  reach several spreads at the limit, so inventory is pushed back well before
+  the hard limit. One γ in $ means the same dollar risk aversion for every
+  stock: a cheaper or calmer stock gets a smaller skew.
+- Rounding to the tick, always away from the mid: bid = the nearest tick at
+  or below (ties go down), ask = the nearest at or above (ties go up). δ/2 is
+  at least half a tick, so bid < ask always. Post-only: bid is capped at a −
+  1 tick and ask raised to at least b + 1 tick. The quotes may improve on the
+  best price.
+- Quoting starts only once there are ≥ 60 σ changes and ≥ 20 executions for
+  k; before that, no quotes.
+- Q = 100, L_inv = 500 as a hard limit, sizes and mechanics exactly as in Rule N.
+  Requotes on every delivered event and on the 1-second timer.
+
+### Rule P — outputs (`results/mm_study/`, CSV + charts) and metrics
+- `runs.csv`: one row per configuration with every metric below.
+- Headline table (latency 0, per strategy × symbol × fill model): P&L at 15:55
+  (with rebates), number of fills, **fill rate = filled shares ÷ shares of
+  accepted orders**, average 1 s markout (share-weighted; both the mid move,
+  side × (mid at t+1 s − mid just before the fill), and the markout vs fill
+  price, side × (mid at t+1 s − fill price)), **maximum inventory = max |inventory|**,
+  **P&L per share = P&L ÷ filled shares**. Also reported: gross P&L before fees,
+  end inventory, time-weighted mean |inventory| over 09:35–15:55, share of
+  quotes that improved the strategy's best price.
+- **Invented profit** = P&L(naive) − P&L(queue-aware), same strategy, symbol
+  and latency, at every latency.
+- **Latency curve**: queue-aware P&L and fill rate against latency, per
+  strategy and symbol (chart + CSV).
+- **Markout curves**: share-weighted markout (mid move, and vs fill price)
+  against horizon 0 to 60 s, per strategy, symbol and fill model, at latency 0
+  (chart + CSV with every latency).
+- Validity checks for every run: 0 look-ahead violations, 0 `ahead`
+  underflows, cash and inventory rebuilt from the fills equal the simulator's.
+  Queue anomalies are counted and reported. A run failing a check is reported
+  as invalid, never dropped.
+- One day and four stocks: no significance tests and no claims beyond these
+  runs. Every number is measured; none is estimated.
+- Power: the run records power source and Low Power Mode at start and end
+  and refuses to start off mains (no timing is reported, but the rule asks
+  for it).
+
+### Rule Q — trials log and changes after the run
+- `research/trials.jsonl`: one JSON line per configuration whose results were
+  looked at: trial number, configuration id, date, commit, strategy and every
+  parameter, symbol, fill model, latencies, fees, session, data file, results
+  file, and headline outcomes. Trial 1 = the 12 Rule L runs. Trial 2 = the 80
+  runs above; the study tool appends them itself when it writes results, and
+  refuses to reuse a trial number, so a rerun cannot overwrite a trial.
+- No parameter is tuned after seeing results. A change that looks justified is
+  written here as a *proposed* new trial, with its reason, and is not run in
+  this step. If a bug is found after the run, the fix is a new trial number,
+  and both trials stay in the log and the report.
+
+### Hypotheses (written before running)
+1. Invented profit > 0 (naive P&L above queue-aware) for every strategy and
+   symbol at latency 0.
+2. Naive fills at least as many shares as queue-aware in every one of the 40
+   pairs. (Not guaranteed: these strategies react to their fills.)
+3. Queue-aware P&L at 10 ms is below queue-aware P&L at 0 for every strategy
+   and symbol.
+4. Queue-aware 1 s mid-move markouts are negative (adverse selection) in every
+   cell at latency 0.
+5. Avellaneda-Stoikov has a smaller time-weighted mean |inventory| than the
+   symmetric quoter for every symbol and fill model at latency 0.
+6. On AAPL, MSFT and INTC the symmetric quoter improves the price on under 10%
+   of its quotes (spreads are mostly one tick); on COLB on over 50%.
+
 ## Open questions
 
 - Target platform/toolchain versions to pin in CI (currently using whatever
