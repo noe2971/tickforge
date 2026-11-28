@@ -368,6 +368,23 @@ the benchmark script now always build with `--clean-first` (about 10 s).
 Benchmarks: not run yet. The laptop is still on battery power with Low Power
 Mode on (checked at 20:09 UTC); the scripts refuse to run off mains.
 
+## 2026-11-28 — Step 1 parse benchmark rerun on mains power
+
+- Power: `AC Power`, Low Power Mode off, at the start and end of the run (30 W
+  adapter; battery 48%, charging). Low Power Mode had been set to on for the
+  power adapter; it was switched off in System Settings before the run.
+- Rule B unchanged. Median of 3 passes: **11.90 s**, 30.95 M msg/s, 944.7 MB/s
+  uncompressed, 400.2 MB/s compressed; read+inflate 10.05 s, frame+decode 1.85 s
+  (199.2 M msg/s decode-only). Same checksum `34e9d033d5d1c3bc` as the
+  battery run, so the same work was done.
+- The battery run (18.78 s median) stays in `results/benchmarks.md` as its
+  own section. Its Low Power Mode state was not recorded.
+- The run is labelled `5de6032-dirty`: the only uncommitted changes were to
+  the benchmark scripts (recording adapter wattage and battery state), not
+  to any code that was measured.
+- The scripts now record, at the start and end of every run, adapter wattage
+  and battery state as well as the power source and Low Power Mode.
+
 ## Open questions
 
 - Target platform/toolchain versions to pin in CI (currently using whatever

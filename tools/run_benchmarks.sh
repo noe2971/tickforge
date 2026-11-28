@@ -16,13 +16,15 @@ out="results/bench/02_parse_itch_mains.md"
 
 require_mains
 cmake --preset release > /dev/null
-cmake --build --preset release -j "$(getconf _NPROCESSORS_ONLN)" --target itch_throughput > /dev/null
+cmake --build --preset release --clean-first -j "$(getconf _NPROCESSORS_ONLN)" --target itch_throughput > /dev/null
 commit="$(git rev-parse --short HEAD)$(git diff --quiet || echo '-dirty')"
 
 power_start="$(power_state)"
+detail_start="$(power_detail)"
 echo "Running parse benchmark on $input ($power_start)..." >&2
 bench_out="$(build/release/bench/itch_throughput "$input" 3 1)"
 power_end="$(power_state)"
+detail_end="$(power_detail)"
 if [[ "$power_start" != "$power_end" ]]; then
     echo "Power changed during the run ('$power_start' -> '$power_end'); result discarded, run again." >&2
     exit 3
@@ -44,8 +46,8 @@ mkdir -p results/bench
     echo "| Machine | |"
     echo "|---|---|"
     machine_table
-    echo "| Power at start | $power_start |"
-    echo "| Power at end | $power_end |"
+    echo "| Power at start | $power_start; $detail_start |"
+    echo "| Power at end | $power_end; $detail_end |"
     echo
     echo "$bench_out"
 } > "$out"

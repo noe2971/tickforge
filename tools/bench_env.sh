@@ -2,7 +2,10 @@
 # Shared helpers for the benchmark scripts (source this file).
 #
 #   power_state       one line: power source and Low Power Mode, e.g.
-#                     "AC Power; Low Power Mode off"
+#                     "AC Power; Low Power Mode off" (compared start vs end)
+#   power_detail      adapter wattage and battery state, recorded but not
+#                     compared (a small adapter can let the battery drain
+#                     under load even while on AC power)
 #   require_mains     exits with status 3 unless the machine is on AC power
 #                     (PROGRESS.md: every benchmark runs on mains power)
 #   machine_table     markdown table rows describing the machine and build
@@ -30,6 +33,17 @@ low_power_mode() {
 }
 
 power_state() { echo "$(power_source); Low Power Mode $(low_power_mode)"; }
+
+power_detail() {
+    if [[ "$(uname)" == "Darwin" ]]; then
+        local watts batt
+        watts="$(pmset -g ac | awk -F'= ' '/Wattage/ {print $2}')"
+        batt="$(pmset -g batt | sed -n '2p' | cut -f2 | sed 's/ present: true//')"
+        echo "adapter ${watts:-none}, battery ${batt}"
+    else
+        echo "n/a"
+    fi
+}
 
 require_mains() {
     local src

@@ -27,14 +27,17 @@ run() {  # engine mode
     local engine="$1" mode="$2" f="$raw_dir/${1}_${2}.md" start end
     require_mains
     start="$(power_state)"
+    local dstart dend
+    dstart="$(power_detail)"
     echo "== $engine $mode ($start)" >&2
     build/release/bench/book_replay "$input" "$peaks" --engine "$engine" --mode "$mode" --passes 3 --warmup 1 > "$f"
     end="$(power_state)"
+    dend="$(power_detail)"
     if [[ "$start" != "$end" ]]; then
         echo "Power changed during $engine $mode ('$start' -> '$end'); result discarded, run again." >&2
         exit 3
     fi
-    echo "$start | $end" > "$raw_dir/${engine}_${mode}.power"
+    echo "start $start, $dstart | end $end, $dend" > "$raw_dir/${engine}_${mode}.power"
 }
 value() { sed -n "s/^<!-- $2=\(.*\) -->$/\1/p" "$raw_dir/$1.md"; }
 
