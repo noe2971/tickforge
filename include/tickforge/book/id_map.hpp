@@ -6,8 +6,8 @@
 // {key, value} slots ("open addressing"):
 //
 //   * lookup: hash the key to a slot, then walk forward until the key or an
-//     empty slot is found ("linear probing"). Neighbouring slots share cache
-//     lines, so a probe usually costs one cache miss.
+//     empty slot is found ("linear probing"). A slot is 16 bytes, so one
+//     64-byte cache line holds four and a short probe run stays in one or two.
 //   * hash: Fibonacci hashing, key * 2^64/phi, keeping the top bits. ITCH
 //     order references are nearly sequential, and this spreads them evenly.
 //   * load factor <= 1/2, so probe runs stay short.

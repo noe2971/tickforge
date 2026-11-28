@@ -10,8 +10,9 @@ out="results/benchmarks.md"
     echo "# Benchmarks"
     echo
     echo "All numbers below were measured by the commands shown; none are estimates."
-    echo "Every section records the power source and Low Power Mode at the start and"
-    echo "the end of its run (rule in \`PROGRESS.md\`, \"Power source\")."
+    echo "Every section from the mains rerun on records the power source and Low Power"
+    echo "Mode at the start and the end of its run (rule in \`PROGRESS.md\`, \"Power"
+    echo "source\"); the first, battery-power run recorded only its starting power source."
     for f in results/bench/*.md; do
         echo
         cat "$f"

@@ -385,6 +385,49 @@ Mode on (checked at 20:09 UTC); the scripts refuse to run off mains.
 - The scripts now record, at the start and end of every run, adapter wattage
   and battery state as well as the power source and Low Power Mode.
 
+## 2026-11-28 — Step 2 benchmarks (Rule E), on mains power
+
+`results/bench/03_book_replay.md` (in `results/benchmarks.md`), commit
+`7f4bfe8`, all four runs on `AC Power` with Low Power Mode off at start and
+end (30 W adapter; battery 48% -> 51%, charging). Medians of 3 full-day
+passes after 1 warm-up, all 8,695 active stocks, books pre-sized from the
+validation peaks.
+
+| | FastBook | ReferenceBook |
+|---|---:|---:|
+| Book time (frame + decode + book update) | 24.29 s | 91.61 s |
+| Book messages per second | 14.9 M | 4.0 M |
+| ns per book message | 66.9 | 252.3 |
+| Heap allocations inside the book segments | **0** | 442,865,912 |
+| Inflate (zlib + file read), reported separately | 10.37 s | 10.40 s |
+
+- **Speedup 3.77x** (91.61 / 24.29). Both engines had identical books at all
+  11 checkpoints (every 1 GiB chunk boundary and the end), combined hash
+  `6dd14ebb3f3cea3b`; 0 book calls returned an error.
+- Latency, ns, median of 3 passes (clock tick 41.667 ns; +/- one tick; the
+  timer's own cost, mean 3.85 ns per pair of reads, is included):
+
+| Call | Count | Fast p50 | p99 | p99.9 | Ref p50 | p99 | p99.9 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| add (A+F) | 164,696,353 | 41.7 | 250.0 | 416.7 | 166.7 | 750.0 | 1,041.7 |
+| execute (E+C) | 8,255,881 | 41.7 | 416.7 | 541.7 | 166.7 | 958.3 | 1,291.7 |
+| cancel (X) | 4,669,874 | 0.0 | 250.0 | 416.7 | 41.7 | 458.3 | 583.3 |
+| delete (D) | 158,273,361 | 41.7 | 416.7 | 625.0 | 166.7 | 958.3 | 1,250.0 |
+| replace (U) | 27,222,746 | 83.3 | 625.0 | 833.3 | 333.3 | 1,125.0 | 1,458.3 |
+
+- "0.0 ns" means the call finished within one clock tick, i.e. under 41.7 ns.
+  FastBook's mean cancel was 29.30 ns, measured by the same timer.
+- Largest single calls (max over a pass) reached tens of microseconds for
+  FastBook (e.g. add max 78,958-271,542 ns) and milliseconds for
+  ReferenceBook (delete up to 9,921,708 ns). The cause is not measured.
+  Candidates are OS interrupts and first-touch page faults in pre-reserved
+  pool memory, which counts as 0 heap allocations but still faults.
+- Timing every call costs about 2 s on the day: FastBook's book time was 26.41 s (median; `results/bench/raw/run_log.txt`)
+  in latency mode vs 24.3 s in throughput mode.
+- Not measured yet: a profile of where FastBook's 66.9 ns per message goes.
+  Cache misses on the id map, order and level are the obvious guess, but it
+  is only a guess until measured.
+
 ## Open questions
 
 - Target platform/toolchain versions to pin in CI (currently using whatever

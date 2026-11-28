@@ -104,8 +104,8 @@ reference number, so id lookup must be O(1).
 
 - One flat array of `{key, Order*}` slots. A lookup hashes to a slot and
   walks forward until it finds the key or an empty slot ("linear probing").
-  Neighbouring slots share cache lines, so a lookup usually costs one cache
-  miss.
+  A slot is 16 bytes, so one 64-byte cache line holds four of them and a
+  short probe run stays inside one or two cache lines.
 - Fibonacci hashing (`key × 2^64/φ`, keep the top bits) spreads ITCH's
   nearly sequential order references evenly.
 - The table is at most half full, so probe runs stay short.
@@ -122,9 +122,12 @@ pool, plus a free list of released objects.
 
 - `acquire()` pops the free list, or bumps a pointer inside the current block.
   `release()` pushes onto the free list. Each is a handful of instructions.
-- `malloc` is slow and unpredictable *in the tail*. It takes locks, manages
-  size classes and sometimes asks the OS for memory. A pool turns "allocate an
-  order" into pointer arithmetic, and its tail is as short as its median.
+- `malloc` can be slow and unpredictable *in the tail*: it manages size
+  classes, may take locks and sometimes asks the OS for memory. A pool turns
+  "allocate an order" into pointer arithmetic. Measured on the full day
+  (below), the pooled engine's p99.9 add latency was 416.7 ns against
+  1,041.7 ns for the `std::map`/`std::list` engine. The difference also
+  includes its other data structures, not only the allocator.
 - Released objects are reused, so the working set stays small and hot in
   cache.
 - The pool only calls the allocator when it has no free object left, which
@@ -194,6 +197,25 @@ In replay mode the same steps happen through `execute(42, 120)`: same
    - an independent share ledger that must reconcile.
 4. **Real-day lockstep diff** (`tools/itch_engine_diff`) replays the whole day
    through both engines at once.
+
+## Measured (30 Jan 2019, all 8,695 active stocks)
+
+From `results/benchmarks.md` (Rule E; Apple M5 Pro, mains power, Low Power
+Mode off; medians of 3 full-day passes):
+
+| | FastBook | ReferenceBook |
+|---|---:|---:|
+| Book time for 363,118,215 book messages | 24.29 s | 91.61 s |
+| Per book message | 66.9 ns | 252.3 ns |
+| Heap allocations during the replay | 0 | 442,865,912 |
+| add p50 / p99 / p99.9 | 41.7 / 250.0 / 416.7 ns | 166.7 / 750.0 / 1,041.7 ns |
+| execute p50 / p99 / p99.9 | 41.7 / 416.7 / 541.7 ns | 166.7 / 958.3 / 1,291.7 ns |
+| cancel (X) p50 / p99 / p99.9 | 0.0 / 250.0 / 416.7 ns | 41.7 / 458.3 / 583.3 ns |
+
+Speedup of the book replay: 3.77x. The clock ticks every 41.667 ns, so
+latencies are whole ticks (+/- one tick); "0.0 ns" means the call finished
+inside a single tick. Why the remaining 67 ns per message is spent where it
+is has not been measured (no profile yet).
 
 ## Known limits
 

@@ -1,0 +1,22 @@
+== fast throughput (AC Power; Low Power Mode off)
+fast throughput warm-up 1: book 24.54 s (discarded)
+fast throughput pass 1: book 23.93 s, inflate 10.26 s
+fast throughput pass 2: book 24.42 s, inflate 10.20 s
+fast throughput pass 3: book 24.29 s, inflate 10.37 s
+== fast latency (AC Power; Low Power Mode off)
+fast latency warm-up 1: book 26.27 s (discarded)
+fast latency pass 1: book 26.09 s, inflate 10.44 s
+fast latency pass 2: book 26.41 s, inflate 10.34 s
+fast latency pass 3: book 26.66 s, inflate 10.38 s
+== reference throughput (AC Power; Low Power Mode off)
+reference throughput warm-up 1: book 91.65 s (discarded)
+reference throughput pass 1: book 91.61 s, inflate 10.40 s
+reference throughput pass 2: book 91.38 s, inflate 10.50 s
+reference throughput pass 3: book 92.54 s, inflate 10.51 s
+== reference latency (AC Power; Low Power Mode off)
+reference latency warm-up 1: book 92.19 s (discarded)
+reference latency pass 1: book 90.82 s, inflate 10.55 s
+reference latency pass 2: book 92.35 s, inflate 10.55 s
+reference latency pass 3: book 92.75 s, inflate 10.44 s
+Wrote results/bench/03_book_replay.md
+Wrote results/benchmarks.md
