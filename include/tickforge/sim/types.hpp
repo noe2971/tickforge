@@ -7,6 +7,7 @@
 // the events below, after the configured market-data latency.
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -26,6 +27,8 @@ using Micros = std::int64_t;     // money in micro-dollars ($0.000001); a Price 
 
 inline constexpr Micros kMicrosPerTick = 100;
 inline constexpr std::uint64_t kNever = std::numeric_limits<std::uint64_t>::max();
+// Most markout horizons a run can measure (SimConfig::markout_horizons_ns).
+inline constexpr std::size_t kMaxMarkoutHorizons = 8;
 
 enum class FillModel : std::uint8_t {
     queue_aware,  // fills only when real volume reaches the order's place in the queue
@@ -51,7 +54,8 @@ struct SimConfig {
     std::uint64_t start_ns = 0;     // strategy start (on_start), nanoseconds after midnight ET
     std::uint64_t end_ns = kNever;  // run end: shadow orders cancelled, final P&L fixed
     std::uint64_t pnl_sample_interval_ns = 1'000'000'000;
-    std::array<std::uint64_t, 3> markout_horizons_ns{100'000'000, 1'000'000'000, 10'000'000'000};
+    // Up to kMaxMarkoutHorizons values; FillRecord index h = position in this list.
+    std::vector<std::uint64_t> markout_horizons_ns{100'000'000, 1'000'000'000, 10'000'000'000};
 };
 
 struct OrderFlags {
@@ -144,8 +148,8 @@ struct FillRecord {
     FillReport report;
     char trigger = 0;  // message type that caused it; 'T' = taking liquidity on arrival
     std::int64_t mid2_before = 0;  // bid + ask (in $0.0001) just before the trigger; 0 = no two-sided book
-    std::array<std::int64_t, 3> mid2_after{};  // bid + ask after the markout horizon
-    std::array<bool, 3> markout_ok{};
+    std::array<std::int64_t, kMaxMarkoutHorizons> mid2_after{};  // bid + ask after each markout horizon
+    std::array<bool, kMaxMarkoutHorizons> markout_ok{};
 
     // side sign x (mid after horizon - mid before), dollars per share.
     double markout(std::size_t h) const noexcept {
@@ -207,7 +211,7 @@ struct SimStats {
     std::uint64_t anomaly_exec_with_ahead = 0;
     std::uint64_t anomaly_cross_add_with_ahead = 0;
     std::uint64_t ahead_underflow = 0;  // a real reduction larger than `ahead` (would mean a bookkeeping bug)
-    std::uint64_t markouts_unavailable[3] = {};
+    std::uint64_t markouts_unavailable[kMaxMarkoutHorizons] = {};
     std::uint64_t strategy_callbacks = 0;
     std::uint64_t lookahead_violations = 0;  // callbacks that had seen data newer than allowed (must be 0)
     std::uint64_t messages = 0;              // ITCH messages read

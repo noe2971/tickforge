@@ -30,3 +30,7 @@ target_compile_options(itch_queue_jumps PRIVATE -Wall -Wextra -Wpedantic)
 add_executable(sim_demo sim_demo.cpp)
 target_link_libraries(sim_demo PRIVATE tickforge_core)
 target_compile_options(sim_demo PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(mm_study mm_study.cpp)
+target_link_libraries(mm_study PRIVATE tickforge_core Threads::Threads)
+target_compile_options(mm_study PRIVATE -Wall -Wextra -Wpedantic)

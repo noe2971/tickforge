@@ -148,6 +148,8 @@ private:
 
 Simulator::Simulator(SimConfig cfg, Strategy& strategy)
     : cfg_(std::move(cfg)), strategy_(strategy), ctx_(std::make_unique<Ctx>(*this)) {
+    if (cfg_.markout_horizons_ns.size() > kMaxMarkoutHorizons)
+        throw std::invalid_argument("SimConfig: more than " + std::to_string(kMaxMarkoutHorizons) + " markout horizons");
     schedule(cfg_.start_ns, kClsTimer, EvKind::start);
     if (cfg_.end_ns != kNever) schedule(cfg_.end_ns, kClsMeasure, EvKind::end);
     if (cfg_.pnl_sample_interval_ns > 0) schedule(cfg_.start_ns, kClsMeasure, EvKind::sample);

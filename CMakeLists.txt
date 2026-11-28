@@ -32,6 +32,7 @@ add_library(tickforge_core
     src/book/queue_jumps.cpp
     src/sim/simulator.cpp
     src/sim/strategies.cpp
+    src/sim/mm_strategies.cpp
 )
 
 # Position-independent so the static library can be linked into the Python

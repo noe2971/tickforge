@@ -29,6 +29,7 @@ add_executable(tickforge_tests
     test_queue_jumps.cpp
     test_sim.cpp
     test_sim_properties.cpp
+    test_mm_strategies.cpp
 )
 
 target_compile_options(tickforge_tests PRIVATE -Wall -Wextra -Wpedantic)
