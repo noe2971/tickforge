@@ -76,6 +76,7 @@ struct Run {
 const char* model_name(FillModel m) { return m == FillModel::queue_aware ? "queue_aware" : "naive"; }
 std::string lat_name(std::uint64_t ns) {
     if (ns == 0) return "0";
+    if (ns >= 1'000'000'000 && ns % 1'000'000'000 == 0) return std::to_string(ns / 1'000'000'000) + " s";
     if (ns >= 1'000'000) return std::to_string(ns / 1'000'000) + " ms";
     return std::to_string(ns / 1'000) + " us";
 }

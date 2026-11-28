@@ -888,6 +888,79 @@ Inputs and parameters, fixed now:
 6. On AAPL, MSFT and INTC the symmetric quoter improves the price on under 10%
    of its quotes (spreads are mostly one tick); on COLB on over 50%.
 
+## 2026-11-28 — Market-making study (Step 4): build log and results (trial 2)
+
+Built (commit `1b35aa8`, before the run): `include/tickforge/sim/mm_strategies.hpp`,
+`src/sim/mm_strategies.cpp` (`TwoSidedQuoter`, `SymmetricInsideQuoter`,
+`AvellanedaStoikov`, pure `as_quote`), markout horizons as a list of up to 8,
+`tools/mm_study` (grid, CSVs, report, trials log), `tools/mm_study_charts.py`,
+`tools/run_mm_study.sh`. 16 new tests (167 C++ tests pass in release and in
+ASan + UBSan; 17 Python tests pass). One bug was found by a unit test before
+any study run: when the market moved, a new bid could reach the exchange
+before our own old offer at the same price had been moved, and was rejected
+as a self-cross. The quoter now sends the side that is in the way first.
+
+Run: `tools/run_mm_study.sh 2`, commit `1b35aa8`, `AC Power`, Low Power Mode
+off at start and end (`results/mm_study/run_log.txt`). **80 of 80 runs valid**:
+0 look-ahead violations, 0 `ahead` underflows, accounting rebuilt from fills
+matches, 0 queue anomalies. Trial 2 is in `research/trials.jsonl` (80 lines).
+Results: `results/mm_study/` (`report.md`, `runs.csv`, `headline_latency0.csv`,
+`invented_profit.csv`, `latency_curve.csv`, `markouts.csv`, 4 PNG charts).
+
+After the run, two cosmetic fixes, no number changed: the report's markout
+header said "1000 ms / 10000 ms / 60000 ms" (corrected to 1 s / 10 s / 60 s
+in the file and in the tool), and two overlapping end labels in the latency
+chart were moved apart (charts regenerated from the same CSVs).
+
+Hypotheses (written before the run):
+1. "Invented profit > 0 for every strategy and symbol at latency 0":
+   **refuted, 5 of 8.** Negative for symmetric AAPL (−$2,432.08), symmetric
+   COLB (−$83.10) and Avellaneda-Stoikov COLB (−$46.25).
+2. "Naive fills at least as many shares as queue-aware in all 40 pairs":
+   **confirmed, 40 of 40.**
+3. "Queue-aware P&L at 10 ms below latency 0": **6 of 8**; both COLB cells
+   went the other way (symmetric −$135.00 → −$52.31; A-S $51.95 → $103.19).
+4. "Queue-aware 1 s mid-move markouts negative at latency 0": **confirmed, 8
+   of 8**, and negative in all 80 runs. Negative already at horizon 0 in all 80.
+5. "A-S has lower time-weighted mean |inventory| than symmetric": **confirmed,
+   8 of 8** (e.g. AAPL queue-aware 49.8 vs 295.1 shares).
+6. "Symmetric improves the price on < 10% of quotes for AAPL, MSFT, INTC and
+   > 50% for COLB": **refuted for AAPL** (46.1% naive, 50.3% queue-aware);
+   holds for MSFT (4.8%, 5.5%), INTC (2.8%, 3.0%) and COLB (67.2%, 71.9%).
+
+Other measured facts (descriptive, looked at after the run):
+- Net P&L was negative in 59 of 80 runs, gross P&L (before the rebate) in 72
+  of 80. The 1 s markout against the fill price was negative in 77 of 80: the
+  price moved against the fill by more than the half-spread earned.
+- P&L per filled share was higher under naive than queue-aware in 7 of 8
+  latency-0 cells (not A-S COLB). Reading (fits the numbers, not tested): the
+  naive model always flatters the *per-share edge*, but it also inflates
+  *volume*; where the edge is negative even under naive (symmetric AAPL:
+  −$0.00245 per share on 3.69 M shares vs −$0.00456 on 1.45 M), more volume
+  means a bigger loss, so invented profit is negative.
+- COLB P&Ls are tens of dollars and every COLB run ended with |inventory|
+  300-500 marked at the 15:55 mid, so a few cents of COLB price move decide
+  their sign. They should not be read as an edge.
+- Queue-aware fill rate *rose* with latency for most cells (symmetric MSFT
+  17.32% → 26.38% at 1 ms), while fills from real executions fell and fills
+  from a real order arriving at our price rose (357 → 7,252) and the
+  half-spread captured fell (0.527¢ → 0.239¢). Same pattern as trial 1:
+  stale quotes get picked off.
+- Queue-aware inventory passed the 500 limit in 20 of 40 queue-aware runs,
+  up to 590, including at latency 0. At latency 0 this comes from events at
+  the same nanosecond: a fill and our replacement order (sized from the
+  position before that fill) reach the exchange at the same timestamp.
+
+Proposed new trials (not run; each would get its own trial number):
+- P1. Same grid on more days. One day cannot separate an edge from noise;
+  this is the main limit of every number above.
+- P2. Report a flattened P&L as well (close the end inventory at 15:55 by
+  crossing the spread and paying the taker fee), so stocks like COLB are not
+  decided by the end-of-day mark.
+- P3. Size orders from the position *plus* open orders on that side, to stop
+  the inventory overshoot. This changes the strategy, so it is a new trial,
+  not a fix to trial 2.
+
 ## Open questions
 
 - Target platform/toolchain versions to pin in CI (currently using whatever

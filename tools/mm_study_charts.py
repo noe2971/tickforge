@@ -69,10 +69,17 @@ def main(out: Path) -> None:
                                                      ("fill_rate", "fill rate (%)", 100.0)]):
             ax = axes[i][j]
             style(ax, f"{sym} — {title}")
+            ends = []
             for (st, name), c in zip(STRATEGIES, (C1, C2)):
                 ys = [num(by[(st, sym, "queue_aware", l)][metric]) * scale for l in LAT]
                 line(ax, range(len(LAT)), ys, c, name)
-                ax.annotate(name, (len(LAT) - 1, ys[-1]), xytext=(6, 0), textcoords="offset points",
+                ends.append((ys[-1], name))
+            # Direct end labels, nudged apart when the two lines end close together.
+            lo, hi = ax.get_ylim()
+            close = abs(ends[0][0] - ends[1][0]) < 0.06 * (hi - lo)
+            for y, name in ends:
+                dy = 0 if not close else (6 if y >= max(e[0] for e in ends) else -6)
+                ax.annotate(name, (len(LAT) - 1, y), xytext=(6, dy), textcoords="offset points",
                             fontsize=7, color=INK2, va="center")
             ax.set_xticks(range(len(LAT)), LAT_LABEL)
             ax.set_xlim(-0.3, len(LAT) + 0.9)

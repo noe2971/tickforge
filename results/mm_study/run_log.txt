@@ -1,0 +1,5 @@
+trial: 2
+commit: 1b35aa8
+start: 2026-11-28T18:07:36Z  AC Power; Low Power Mode off  (adapter 30W, battery 98%; charging; (no estimate))
+end:   2026-11-28T18:07:37Z  AC Power; Low Power Mode off  (adapter 30W, battery 98%; charging; (no estimate))
+power unchanged: yes

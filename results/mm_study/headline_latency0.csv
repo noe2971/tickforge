@@ -1,0 +1,17 @@
+strategy,symbol,fill_model,pnl_usd,fills,fill_rate,markout_1s_mid_cents,markout_1s_vs_fill_cents,max_abs_inventory,pnl_per_share_usd
+symmetric,AAPL,naive,-9025.90,36893,0.228156,-0.9776,-0.2647,500,-0.002447
+symmetric,AAPL,queue_aware,-6593.82,21844,0.100163,-1.1503,-0.4556,569,-0.004557
+symmetric,MSFT,naive,-1076.00,21930,0.321290,-0.6818,-0.1521,500,-0.000491
+symmetric,MSFT,queue_aware,-1459.28,15491,0.173181,-0.7743,-0.2477,507,-0.001468
+symmetric,INTC,naive,238.00,8490,0.449944,-0.7253,-0.2184,500,0.000280
+symmetric,INTC,queue_aware,-266.66,4975,0.278572,-0.8128,-0.3219,535,-0.000632
+symmetric,COLB,naive,-218.10,1037,0.178179,-1.2642,-0.3915,500,-0.002103
+symmetric,COLB,queue_aware,-135.00,614,0.076198,-1.5687,-0.5862,500,-0.003388
+avellaneda_stoikov,AAPL,naive,-5614.50,24415,0.126745,-0.9412,-0.3737,500,-0.002300
+avellaneda_stoikov,AAPL,queue_aware,-8755.09,17285,0.073183,-0.9974,-0.8318,502,-0.006856
+avellaneda_stoikov,MSFT,naive,345.20,28016,0.336201,-0.5426,-0.1542,500,0.000123
+avellaneda_stoikov,MSFT,queue_aware,-1058.02,22509,0.243643,-0.5588,-0.2411,507,-0.000630
+avellaneda_stoikov,INTC,naive,214.00,10570,0.478735,-0.6218,-0.2098,500,0.000202
+avellaneda_stoikov,INTC,queue_aware,-358.29,6755,0.337690,-0.6741,-0.2974,500,-0.000600
+avellaneda_stoikov,COLB,naive,5.70,381,0.062944,-1.5131,-0.0971,500,0.000150
+avellaneda_stoikov,COLB,queue_aware,51.95,191,0.022482,-1.8406,-0.4083,500,0.004205
