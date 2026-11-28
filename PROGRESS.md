@@ -596,6 +596,89 @@ Shadow orders fill only while the stock's latest Stock Trading Action state is
 - No timing measurement is part of Step 3. If one is added, the mains-power
   rule applies.
 
+## 2026-11-28 — Simulator (Step 3): build log and results
+
+Built (commit `e3ecaf5`; design note `docs/simulator_design.md`):
+- `include/tickforge/sim/`: `types.hpp`, `strategy.hpp` (C++ `Strategy` and
+  `Context`), `simulator.hpp` (`Simulator` ITCH handler, `run_file`),
+  `strategies.hpp` (`JoinBestQuoter`, `ScheduledOrders`); `src/sim/`.
+- Python: `python/src/bindings.cpp` (subclassable `tickforge.Strategy`,
+  `tickforge.simulate`), `python/tickforge/strategies.py` (`JoinBestQuoterPy`).
+  `python/uv.lock` is now tracked (`uv run` created it).
+- Tools: `itch_queue_jumps` (investigation), `sim_demo` (Rule L).
+- 149 C++ tests pass in release and in ASan + UBSan (`scripts/check.sh`); 17
+  Python tests pass. The tests that need `data/` skip with a message when the
+  file is missing.
+
+Rule K checks, all passing:
+- Hand-built: behind 500 shares, it fills only after 500 trade (then 60 + 40
+  in two partial fills, cash checked to the micro-dollar). Cancels and
+  deletes ahead move it up, and a cancel behind it doesn't. A late add goes
+  ahead. Partial cancel keeps priority; replace loses it. With 10 µs latency
+  the order queues behind a real order that arrived 5 µs before it; with 0
+  latency it is ahead and fills at 2 ms instead of 4 ms; arriving at the
+  same nanosecond puts it behind. A cancel arriving after the fill is
+  rejected as too late. Also: taking without reusing liquidity, IOC,
+  post-only and self-cross rejections, no fills while halted, crossing adds,
+  markouts at all three horizons and MTM to the micro-dollar.
+- Look-ahead, random streams: 12 streams × 4 latency settings = 48 pairs of
+  runs whose futures differ after T. Decisions up to T + market-data latency
+  were identical in all 48, and later decisions differed in all 48. COLB,
+  with the afternoon altered after 12:00 (every third message dropped, adds
+  moved 5 cents and doubled): identical decisions up to 12:00:00.00005, and
+  the afternoon differs. 0 look-ahead violations in every run.
+- Naive ≥ queue-aware, per order (fill-independent strategies): held for
+  every order of 150 random streams (naive 21,955,439 shares, queue-aware
+  586,357), of COLB (4,558 orders; 23,700 vs 13,375) and of MSFT (4,558
+  orders; 236,900 vs 203,416).
+- The Python copy of `JoinBestQuoter` gives the same decisions, fills and P&L
+  as the C++ one on COLB.
+
+Rule L demonstration (`results/sim_demo_01302019.md`, COLB and MSFT, 09:35 to
+15:55, every run 0 queue anomalies, 0 look-ahead violations):
+
+| Stock | Model | Latency | Fills | Filled shares | P&L at 15:55 | 10 s mid move (¢/sh) | 10 s vs fill price (¢/sh) |
+|---|---|---|---:|---:|---:|---:|---:|
+| COLB | queue-aware | 1 µs | 338 | 23,436 | $32.35 | -1.457 | -0.397 |
+| COLB | queue-aware | 100 µs | 468 | 35,040 | $87.34 | -0.949 | -0.415 |
+| COLB | queue-aware | 1 ms | 449 | 33,130 | $82.04 | -1.021 | -0.500 |
+| COLB | naive | 1 µs | 887 | 88,700 | $119.90 | -1.383 | -0.225 |
+| COLB | naive | 100 µs | 719 | 71,900 | $137.30 | -1.220 | -0.131 |
+| COLB | naive | 1 ms | 545 | 54,500 | $166.50 | -1.233 | -0.061 |
+| MSFT | queue-aware | 1 µs | 14,572 | 955,999 | -$1,296.88 | -0.804 | -0.295 |
+| MSFT | queue-aware | 100 µs | 14,810 | 1,069,875 | -$1,997.77 | -0.691 | -0.359 |
+| MSFT | queue-aware | 1 ms | 16,767 | 1,238,270 | -$2,274.48 | -0.633 | -0.391 |
+| MSFT | naive | 1 µs | 21,672 | 2,167,200 | -$647.60 | -0.730 | -0.192 |
+| MSFT | naive | 100 µs | 20,198 | 2,019,800 | -$435.40 | -0.697 | -0.193 |
+| MSFT | naive | 1 ms | 17,390 | 1,739,000 | -$478.00 | -0.686 | -0.207 |
+
+Hypotheses (written before the run):
+1. "Naive fills more shares than queue-aware in every cell": **confirmed** (6
+   of 6; 1.4× to 3.8× as many shares).
+2. "Queue-aware filled shares fall as latency rises": **refuted**. MSFT rose
+   (955,999 → 1,069,875 → 1,238,270); COLB rose from 1 µs to 100 µs and dipped
+   slightly at 1 ms. A post-hoc breakdown (added after the first run,
+   descriptive only, in the report) shows two opposite effects. Fills from
+   real executions did fall with latency (MSFT 14,331 → 10,612 → 9,701). Fills
+   from a real order arriving on the other side at our price rose (MSFT 223 →
+   4,172 → 7,031; COLB 1 → 151 → 130). Reading, not proven: a slow strategy
+   leaves stale quotes in place after the market moves, and incoming orders
+   pick them off. The half-spread captured per filled share fell with latency
+   (MSFT queue-aware 0.509¢ → 0.332¢ → 0.242¢), which fits that reading.
+3. "Queue-aware fills have worse 1 s and 10 s midpoint markouts than naive":
+   **confirmed only at 1 µs**. At 100 µs and 1 ms they were less negative than
+   naive for both stocks. Measured against the fill price, queue-aware was
+   worse than naive in all 6 cells at all three horizons. Much of the adverse
+   move happens *before* a queue-aware fill (between the quote going stale and
+   the fill), so the midpoint just before the fill already includes it.
+- Inventory reached ±599 under queue-aware fills: the rule stops buying at
+  ≥ +500, so a 100-share buy may still fill from +499. Naive fills whole
+  100-share orders, so it stops at exactly ±500.
+- P&L: on MSFT the strategy lost money under every setting, and the
+  queue-aware loss was 2.0× to 4.8× the naive one. Naive's P&L is higher in
+  all 6 cells. Every P&L above includes the illustrative maker rebate; with
+  no rebate, every cell would be lower by its rebates column in the report.
+
 ## Open questions
 
 - Target platform/toolchain versions to pin in CI (currently using whatever

@@ -26,3 +26,7 @@ target_compile_options(itch_top_levels PRIVATE -Wall -Wextra -Wpedantic)
 add_executable(itch_queue_jumps itch_queue_jumps.cpp)
 target_link_libraries(itch_queue_jumps PRIVATE tickforge_core)
 target_compile_options(itch_queue_jumps PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(sim_demo sim_demo.cpp)
+target_link_libraries(sim_demo PRIVATE tickforge_core)
+target_compile_options(sim_demo PRIVATE -Wall -Wextra -Wpedantic)
