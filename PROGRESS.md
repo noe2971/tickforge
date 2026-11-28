@@ -417,8 +417,8 @@ validation peaks.
 
 - "0.0 ns" means the call finished within one clock tick, i.e. under 41.7 ns.
   FastBook's mean cancel was 29.30 ns, measured by the same timer.
-- Largest single calls (max over a pass) reached tens of microseconds for
-  FastBook (e.g. add max 78,958-271,542 ns) and milliseconds for
+- Largest single calls (max over a pass) reached tens to hundreds of
+  microseconds for FastBook (add max 78,125-271,542 ns across the 3 passes) and milliseconds for
   ReferenceBook (delete up to 9,921,708 ns). The cause is not measured.
   Candidates are OS interrupts and first-touch page faults in pre-reserved
   pool memory, which counts as 0 heap allocations but still faults.
